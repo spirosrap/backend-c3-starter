@@ -1,17 +1,18 @@
 # Taskify Implementation Guide
 
-This document details the implementation of the Taskify project, focusing on the user registration and authentication system.
+This document details the implementation of the Taskify project, focusing on the user registration, authentication system, and role-based access control (RBAC).
 
 ## Table of Contents
 1. [Prerequisites](#prerequisites)
 2. [Database Setup](#database-setup)
 3. [Tasks Table Migration](#tasks-table-migration)
-4. [Environment Configuration](#environment-configuration)
-5. [Running the Application](#running-the-application)
-6. [API Endpoints](#api-endpoints)
-7. [Testing the Implementation](#testing-the-implementation)
-8. [Security Features](#security-features)
-9. [Troubleshooting](#troubleshooting)
+4. [Role-Based Access Control](#role-based-access-control)
+5. [Environment Configuration](#environment-configuration)
+6. [Running the Application](#running-the-application)
+7. [API Endpoints](#api-endpoints)
+8. [Testing the Implementation](#testing-the-implementation)
+9. [Security Features](#security-features)
+10. [Troubleshooting](#troubleshooting)
 
 ## Prerequisites
 
@@ -107,6 +108,114 @@ Check that the `tasks` table exists:
 psql -h localhost -p 5432 -U taskmanager -d taskmanager -c "\dt"
 ```
 You should see `tasks` in the list of tables.
+
+## Role-Based Access Control
+
+### Database Schema
+
+The RBAC system consists of four main tables:
+
+1. **Roles Table**
+```sql
+CREATE TABLE roles (
+    id UUID PRIMARY KEY,
+    name VARCHAR(50) NOT NULL UNIQUE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMP
+);
+```
+
+2. **Permissions Table**
+```sql
+CREATE TABLE permissions (
+    id UUID PRIMARY KEY,
+    resource VARCHAR(50) NOT NULL,
+    action VARCHAR(50) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMP,
+    UNIQUE(resource, action)
+);
+```
+
+3. **User Roles Table**
+```sql
+CREATE TABLE user_roles (
+    user_id UUID NOT NULL,
+    role_id UUID NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMP,
+    PRIMARY KEY (user_id, role_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE
+);
+```
+
+4. **Role Permissions Table**
+```sql
+CREATE TABLE role_permissions (
+    role_id UUID NOT NULL,
+    permission_id UUID NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMP,
+    PRIMARY KEY (role_id, permission_id),
+    FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE,
+    FOREIGN KEY (permission_id) REFERENCES permissions(id) ON DELETE CASCADE
+);
+```
+
+### Default Data
+
+The system comes pre-configured with:
+
+1. **Roles:**
+   - Admin: Full system access
+   - User: Basic access
+
+2. **Permissions:**
+   - Tasks: create, read, update, delete
+   - Users: create, read, update, delete
+   - Roles: assign, revoke
+
+3. **Role-Permission Mappings:**
+   - Admin role: All permissions
+   - User role: Basic permissions
+     - All task operations
+     - User read permission
+
+4. **Default Admin User:**
+   - Username: admin
+   - Email: admin@taskify.com
+   - Password: admin123
+   - Role: admin
+
+### Running the Migrations
+
+1. Ensure your database is running and environment variables are set.
+2. From the `database-migrations` directory, run:
+   ```bash
+   go run main.go up
+   ```
+
+### Verifying the Setup
+
+Check that the tables and data are properly created:
+```bash
+# Check roles
+psql -h localhost -p 5432 -U taskmanager -d taskmanager -c "SELECT * FROM roles;"
+
+# Check permissions
+psql -h localhost -p 5432 -U taskmanager -d taskmanager -c "SELECT * FROM permissions;"
+
+# Check role permissions
+psql -h localhost -p 5432 -U taskmanager -d taskmanager -c "SELECT r.name as role, p.resource, p.action FROM role_permissions rp JOIN roles r ON r.id = rp.role_id JOIN permissions p ON p.id = rp.permission_id ORDER BY r.name, p.resource, p.action;"
+
+# Check admin user and role
+psql -h localhost -p 5432 -U taskmanager -d taskmanager -c "SELECT u.username, u.email, r.name as role FROM users u JOIN user_roles ur ON u.id = ur.user_id JOIN roles r ON r.id = ur.role_id WHERE u.username = 'admin';"
+```
 
 ## Environment Configuration
 
@@ -264,22 +373,29 @@ curl -X GET http://localhost:8080/api/v1/users/profile \
    - Secure token generation and validation
    - Automatic token rotation on refresh
 
-3. **Refresh Token Security**
+3. **Role-Based Access Control**
+   - Role-based permission system
+   - Granular resource and action permissions
+   - Default roles with appropriate permissions
+   - Secure role assignment and revocation
+
+4. **Refresh Token Security**
    - Refresh tokens stored in database with expiration
    - One-time use refresh tokens (invalidated after use)
    - Automatic cleanup of used tokens
    - UUID-based refresh tokens for uniqueness
 
-4. **Input Validation**
+5. **Input Validation**
    - Required field validation
    - Email format validation
    - Username and email uniqueness checks
 
-5. **Database Security**
+6. **Database Security**
    - UUID for user identification
    - Unique constraints on username and email
    - Soft delete support
    - Proper error handling
+   - Foreign key constraints with CASCADE delete
 
 ## Troubleshooting
 
@@ -326,11 +442,12 @@ curl -X GET http://localhost:8080/api/v1/users/profile \
 
 ## Next Steps
 
-1. Add role-based access control
-2. Implement task management features
-3. Add user profile management
-4. Implement password reset functionality
-5. Add rate limiting for authentication endpoints
+1. Implement role-based middleware for route protection
+2. Add role management endpoints
+3. Implement permission checking in handlers
+4. Add user profile management
+5. Implement password reset functionality
+6. Add rate limiting for authentication endpoints
 
 ## Learning Outcomes
 
@@ -338,6 +455,8 @@ Through this implementation, we've learned:
 - Secure password handling with bcrypt
 - JWT-based authentication
 - Refresh token implementation and security
+- Role-based access control (RBAC)
+- Permission management
 - Input validation and sanitization
 - Database security best practices
 - Error handling and user feedback
