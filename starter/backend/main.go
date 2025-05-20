@@ -4,6 +4,7 @@ import (
 	"log"
 	"task-manager/backend/internal/handlers"
 	"task-manager/backend/internal/repositories"
+	"task-manager/backend/internal/services"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -32,8 +33,8 @@ func main() {
 
 	userHandler := handlers.NewUserHandler(db, nil)
 
-	registrationHandler :=
-		handlers.NewRegisterHandler(db, nil)
+	registerService := services.NewRegisterService()
+	registrationHandler := handlers.NewRegisterHandler(db, registerService)
 
 	r := gin.Default()
 
