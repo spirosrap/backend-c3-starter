@@ -119,6 +119,24 @@ Response:
 }
 ```
 
+### Refresh Token
+```bash
+curl -X POST http://localhost:8080/api/v1/auth/refresh \
+  -H "Content-Type: application/json" \
+  -d '{
+    "refresh_token": "550e8400-e29b-41d4-a716-446655440000"
+  }'
+```
+
+Response:
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refresh_token": "660e8400-e29b-41d4-a716-446655440000",
+  "expires_in": 3600
+}
+```
+
 ## Testing the Implementation
 
 1. Register a new user:
@@ -147,7 +165,20 @@ curl -X POST http://localhost:8080/api/v1/auth/login \
   }'
 ```
 
-4. Use the access token for authenticated requests:
+4. Test token refresh:
+```bash
+# Save the refresh token from the login response
+REFRESH_TOKEN="your-refresh-token"
+
+# Use the refresh token to get new tokens
+curl -X POST http://localhost:8080/api/v1/auth/refresh \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"refresh_token\": \"$REFRESH_TOKEN\"
+  }"
+```
+
+5. Use the access token for authenticated requests:
 ```bash
 curl -X GET http://localhost:8080/api/v1/users/profile \
   -H "Authorization: Bearer <access_token>"
@@ -162,15 +193,22 @@ curl -X GET http://localhost:8080/api/v1/users/profile \
 
 2. **JWT Authentication**
    - Access tokens with 1-hour expiration
-   - Refresh token mechanism
+   - Refresh token mechanism with database storage
    - Secure token generation and validation
+   - Automatic token rotation on refresh
 
-3. **Input Validation**
+3. **Refresh Token Security**
+   - Refresh tokens stored in database with expiration
+   - One-time use refresh tokens (invalidated after use)
+   - Automatic cleanup of used tokens
+   - UUID-based refresh tokens for uniqueness
+
+4. **Input Validation**
    - Required field validation
    - Email format validation
    - Username and email uniqueness checks
 
-4. **Database Security**
+5. **Database Security**
    - UUID for user identification
    - Unique constraints on username and email
    - Soft delete support
@@ -205,26 +243,34 @@ curl -X GET http://localhost:8080/api/v1/users/profile \
      export JWT_SECRET=your-secret-key
      ```
 
+4. **Refresh Token Issues**
+   - Error: "invalid refresh token"
+   - Solution: Ensure you're using a valid refresh token from a recent login
+   - Error: "refresh token expired"
+   - Solution: Login again to get new tokens
+
 ### Debugging Tips
 
 1. Check server logs for detailed error messages
 2. Verify database connection using psql
 3. Test API endpoints with curl to isolate issues
 4. Ensure all environment variables are set correctly
+5. Check token expiration times in the database
 
 ## Next Steps
 
-1. Implement refresh token mechanism
-2. Add role-based access control
-3. Implement task management features
-4. Add user profile management
-5. Implement password reset functionality
+1. Add role-based access control
+2. Implement task management features
+3. Add user profile management
+4. Implement password reset functionality
+5. Add rate limiting for authentication endpoints
 
 ## Learning Outcomes
 
 Through this implementation, we've learned:
 - Secure password handling with bcrypt
 - JWT-based authentication
+- Refresh token implementation and security
 - Input validation and sanitization
 - Database security best practices
 - Error handling and user feedback

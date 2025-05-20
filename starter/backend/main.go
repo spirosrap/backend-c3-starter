@@ -33,7 +33,7 @@ func main() {
 
 	taskHandler := handlers.NewTaskHandler(db, nil)
 
-	refreshHandler := handlers.NewRefreshHandler(db, nil)
+	refreshHandler := handlers.NewRefreshHandler(db, authService)
 
 	userHandler := handlers.NewUserHandler(db, nil)
 
