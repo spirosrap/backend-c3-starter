@@ -1,14 +1,29 @@
 # Taskify Implementation Guide
 
-This document details the implementation of the Taskify project, focusing on the user registration system and its security features.
+This document details the implementation of the Taskify project, focusing on the user registration and authentication system.
 
-## Implementation Steps
+## Table of Contents
+1. [Prerequisites](#prerequisites)
+2. [Database Setup](#database-setup)
+3. [Environment Configuration](#environment-configuration)
+4. [Running the Application](#running-the-application)
+5. [API Endpoints](#api-endpoints)
+6. [Testing the Implementation](#testing-the-implementation)
+7. [Security Features](#security-features)
+8. [Troubleshooting](#troubleshooting)
 
-### 1. User Registration Implementation
+## Prerequisites
 
-#### Database Setup
-First, we set up the PostgreSQL database using Docker:
+Before starting, ensure you have the following installed:
+- Go 1.23 or higher
+- PostgreSQL 17
+- Docker (optional, for running PostgreSQL)
+
+## Database Setup
+
+### Using Docker (Recommended)
 ```bash
+# Start PostgreSQL container
 docker run -itd --name postgres --restart=always \
   -p 5432:5432 \
   -e POSTGRES_PASSWORD=strongpass123 \
@@ -17,112 +32,57 @@ docker run -itd --name postgres --restart=always \
   postgres:17
 ```
 
-#### Environment Configuration
+### Manual PostgreSQL Setup
+1. Install PostgreSQL 17
+2. Create a new database and user:
+```sql
+CREATE DATABASE taskmanager;
+CREATE USER taskmanager WITH PASSWORD 'strongpass123';
+GRANT ALL PRIVILEGES ON DATABASE taskmanager TO taskmanager;
+```
+
+## Environment Configuration
+
 Set up the required environment variables:
 ```bash
+# Database configuration
 export DB_USER=taskmanager
 export DB_PASSWORD=strongpass123
 export DB_NAME=taskmanager
 export DB_HOST=localhost
 export DB_PORT=5432
+
+# JWT configuration
+export JWT_SECRET=your-secret-key
 ```
 
-#### Database Migrations
-Run the migrations to create the necessary tables:
+## Running the Application
+
+1. Clone the repository:
 ```bash
-# Create users table
-psql -h localhost -p 5432 -U taskmanager -d taskmanager -f database-migrations/migrations/000001_create_users_table.up.sql
-
-# Create tokens table
-psql -h localhost -p 5432 -U taskmanager -d taskmanager -f database-migrations/migrations/000002_create_tokens_table.up.sql
+git clone <repository-url>
+cd taskify
 ```
 
-### 2. Code Implementation
-
-#### User Model
-The user model is defined with the following structure:
-```go
-type User struct {
-    gorm.Model
-    ID       uuid.UUID `json:"id" gorm:"primaryKey"`
-    Username string    `json:"username" gorm:"unique"`
-    Email    string    `json:"email" gorm:"unique"`
-    Password string    `json:"password"`
-}
-```
-
-#### Registration Service
-The registration service implements secure user creation:
-```go
-func (s *RegisterServiceImpl) RegisterUser(db *gorm.DB, user models.User) error {
-    // Generate UUID
-    id, err := uuid.NewV4()
-    if err != nil {
-        return err
-    }
-    user.ID = id
-
-    // Hash password using bcrypt
-    hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
-    if err != nil {
-        return err
-    }
-    user.Password = string(hashedPassword)
-
-    // Create user in database
-    result := db.Create(&user)
-    return result.Error
-}
-```
-
-#### Registration Handler
-The handler implements input validation and duplicate checking:
-```go
-func (h *RegisterHandler) Registration(c *gin.Context) {
-    var req RegisterRequest
-    if err := c.ShouldBindJSON(&req); err != nil {
-        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-        return
-    }
-
-    // Check for duplicate username
-    var existingUser models.User
-    if err := h.db.Where("username = ?", req.Username).First(&existingUser).Error; err == nil {
-        c.JSON(http.StatusConflict, gin.H{"error": "username already exists"})
-        return
-    }
-
-    // Check for duplicate email
-    if err := h.db.Where("email = ?", req.Email).First(&existingUser).Error; err == nil {
-        c.JSON(http.StatusConflict, gin.H{"error": "email already exists"})
-        return
-    }
-
-    // Create new user
-    user := models.User{
-        Username: req.Username,
-        Email:    req.Email,
-        Password: req.Password,
-    }
-
-    if err := h.registerService.RegisterUser(h.db, user); err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create user"})
-        return
-    }
-
-    c.JSON(http.StatusCreated, gin.H{"message": "user created successfully"})
-}
-```
-
-### 3. Testing the Implementation
-
-#### Start the Server
+2. Install dependencies:
 ```bash
 cd backend
+go mod download
+```
+
+3. Start the server:
+```bash
 go run main.go
 ```
 
-#### Test User Registration
+The server will start on `http://localhost:8080` with the following endpoints available:
+- POST `/api/v1/auth/register` - User registration
+- POST `/api/v1/auth/login` - User login
+- POST `/api/v1/auth/refresh` - Refresh access token
+
+## API Endpoints
+
+### User Registration
 ```bash
 curl -X POST http://localhost:8080/api/v1/auth/register \
   -H "Content-Type: application/json" \
@@ -133,53 +93,141 @@ curl -X POST http://localhost:8080/api/v1/auth/register \
   }'
 ```
 
-#### Verify User Creation
+Response:
+```json
+{
+  "message": "user created successfully"
+}
+```
+
+### User Login
+```bash
+curl -X POST http://localhost:8080/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "testuser",
+    "password": "password123"
+  }'
+```
+
+Response:
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refresh_token": "550e8400-e29b-41d4-a716-446655440000",
+  "expires_in": 3600
+}
+```
+
+## Testing the Implementation
+
+1. Register a new user:
+```bash
+curl -X POST http://localhost:8080/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "testuser",
+    "email": "test@example.com",
+    "password": "password123"
+  }'
+```
+
+2. Verify user creation in database:
 ```bash
 psql -h localhost -p 5432 -U taskmanager -d taskmanager -c "SELECT id, username, email FROM users;"
 ```
 
-## Security Features Implemented
+3. Test login with the created user:
+```bash
+curl -X POST http://localhost:8080/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "testuser",
+    "password": "password123"
+  }'
+```
+
+4. Use the access token for authenticated requests:
+```bash
+curl -X GET http://localhost:8080/api/v1/users/profile \
+  -H "Authorization: Bearer <access_token>"
+```
+
+## Security Features
 
 1. **Password Security**
    - Bcrypt hashing with default cost factor
    - Minimum password length requirement (6 characters)
+   - Secure password comparison
 
-2. **Input Validation**
+2. **JWT Authentication**
+   - Access tokens with 1-hour expiration
+   - Refresh token mechanism
+   - Secure token generation and validation
+
+3. **Input Validation**
    - Required field validation
    - Email format validation
    - Username and email uniqueness checks
 
-3. **Database Security**
+4. **Database Security**
    - UUID for user identification
    - Unique constraints on username and email
    - Soft delete support
    - Proper error handling
 
-## Common Issues and Solutions
+## Troubleshooting
+
+### Common Issues
 
 1. **Database Connection Issues**
-   - Ensure correct environment variables are set
-   - Verify PostgreSQL is running
-   - Check user permissions
+   - Error: "password authentication failed for user 'postgres'"
+   - Solution: Ensure correct environment variables are set:
+     ```bash
+     export DB_USER=taskmanager
+     export DB_PASSWORD=strongpass123
+     export DB_NAME=taskmanager
+     export DB_HOST=localhost
+     export DB_PORT=5432
+     ```
 
-2. **Migration Issues**
-   - Run migrations in correct order
-   - Ensure database exists before running migrations
-   - Check user permissions for migration execution
+2. **Port Already in Use**
+   - Error: "listen tcp :8080: bind: address already in use"
+   - Solution: Find and kill the process using port 8080:
+     ```bash
+     sudo lsof -i :8080 | awk 'NR!=1 {print $2}' | xargs kill -9
+     ```
+
+3. **JWT Token Issues**
+   - Error: "invalid memory address or nil pointer dereference"
+   - Solution: Ensure JWT_SECRET is set:
+     ```bash
+     export JWT_SECRET=your-secret-key
+     ```
+
+### Debugging Tips
+
+1. Check server logs for detailed error messages
+2. Verify database connection using psql
+3. Test API endpoints with curl to isolate issues
+4. Ensure all environment variables are set correctly
 
 ## Next Steps
 
-1. Implement user login functionality
-2. Add JWT token generation
-3. Implement refresh token mechanism
-4. Add role-based access control
-5. Implement task management features
+1. Implement refresh token mechanism
+2. Add role-based access control
+3. Implement task management features
+4. Add user profile management
+5. Implement password reset functionality
 
 ## Learning Outcomes
 
 Through this implementation, we've learned:
 - Secure password handling with bcrypt
+- JWT-based authentication
 - Input validation and sanitization
 - Database security best practices
 - Error handling and user feedback
-- RESTful API design principles 
+- RESTful API design principles
+- Environment configuration management
+- Docker containerization 

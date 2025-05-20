@@ -25,16 +25,17 @@ func main() {
 	}
 	defer sqlDB.Close()
 
-	authHandler := handlers.NewAuthHandler(db, nil)
+	registerService := services.NewRegisterService()
+	registrationHandler := handlers.NewRegisterHandler(db, registerService)
+
+	authService := services.NewAuthService()
+	authHandler := handlers.NewAuthHandler(db, authService)
 
 	taskHandler := handlers.NewTaskHandler(db, nil)
 
 	refreshHandler := handlers.NewRefreshHandler(db, nil)
 
 	userHandler := handlers.NewUserHandler(db, nil)
-
-	registerService := services.NewRegisterService()
-	registrationHandler := handlers.NewRegisterHandler(db, registerService)
 
 	r := gin.Default()
 
