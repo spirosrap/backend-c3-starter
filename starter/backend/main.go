@@ -31,7 +31,8 @@ func main() {
 	authService := services.NewAuthService()
 	authHandler := handlers.NewAuthHandler(db, authService)
 
-	taskHandler := handlers.NewTaskHandler(db, nil)
+	taskService := services.NewTaskService()
+	taskHandler := handlers.NewTaskHandler(db, taskService)
 
 	refreshHandler := handlers.NewRefreshHandler(db, authService)
 
