@@ -11,4 +11,5 @@ type User struct {
 	Username string    `json:"username" gorm:"unique"`
 	Email    string    `json:"email" gorm:"unique"`
 	Password string    `json:"password"`
+	Roles    []Role    `json:"roles" gorm:"many2many:user_roles;"`
 }

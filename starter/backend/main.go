@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"task-manager/backend/internal/handlers"
+	"task-manager/backend/internal/middleware"
 	"task-manager/backend/internal/repositories"
 	"task-manager/backend/internal/services"
 	"time"
@@ -57,6 +58,7 @@ func main() {
 			authRoutes.POST("/refresh", refreshHandler.Refresh)
 		}
 		taskRoutes := v1.Group("/tasks")
+		taskRoutes.Use(middleware.AuthMiddleware())
 		{
 			taskRoutes.POST("", taskHandler.CreateTask)
 			taskRoutes.PUT("/:id", taskHandler.UpdateTask)
@@ -71,6 +73,15 @@ func main() {
 			userRoutes.GET("/:user_id/tasks", taskHandler.GetTasksByUser)
 			userRoutes.GET("/profile", userHandler.GetUserProfile)
 			userRoutes.GET("/profile/:user_id", userHandler.GetUserProfileByUserId)
+		}
+
+		// Admin-only route
+		adminRoutes := v1.Group("/admin")
+		adminRoutes.Use(middleware.AuthMiddleware(), middleware.RequireRole("admin"))
+		{
+			adminRoutes.GET("/dashboard", func(c *gin.Context) {
+				c.JSON(200, gin.H{"message": "admin access granted"})
+			})
 		}
 	}
 	r.Run(":8080")

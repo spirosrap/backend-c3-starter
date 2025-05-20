@@ -32,7 +32,7 @@ func VerifyPassword(hashedPassword, plainPassword string) bool {
 
 func (s *AuthServiceImpl) LoginUser(db *gorm.DB, username, password string) (*models.User, error) {
 	var user models.User
-	if err := db.Where("username = ?", username).First(&user).Error; err != nil {
+	if err := db.Preload("Roles.Permissions").Where("username = ?", username).First(&user).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, errors.New("invalid username or password")
 		}
@@ -48,8 +48,30 @@ func (s *AuthServiceImpl) LoginUser(db *gorm.DB, username, password string) (*mo
 }
 
 func (s *AuthServiceImpl) GenerateToken(db *gorm.DB, userID uuid.UUID, username string) (string, string, error) {
-	// Generate access token
-	accessToken, err := utils.GenerateAccessToken(userID, username)
+	// Get user with roles and permissions
+	var user models.User
+	if err := db.Preload("Roles.Permissions").First(&user, userID).Error; err != nil {
+		return "", "", err
+	}
+
+	// Extract roles and permissions
+	roles := make([]string, 0)
+	permissions := make([]string, 0)
+	permissionMap := make(map[string]bool) // To avoid duplicates
+
+	for _, role := range user.Roles {
+		roles = append(roles, role.Name)
+		for _, permission := range role.Permissions {
+			permKey := permission.Resource + ":" + permission.Action
+			if !permissionMap[permKey] {
+				permissions = append(permissions, permKey)
+				permissionMap[permKey] = true
+			}
+		}
+	}
+
+	// Generate access token with roles and permissions
+	accessToken, err := utils.GenerateAccessToken(userID, username, roles, permissions)
 	if err != nil {
 		log.Printf("Error generating access token: %v", err)
 		return "", "", errors.New("failed to generate access token")
@@ -105,7 +127,7 @@ func (s *AuthServiceImpl) RefreshToken(db *gorm.DB, refreshToken string) (string
 	var user models.User
 	if err := db.First(&user, token.UserId).Error; err != nil {
 		log.Printf("Error finding user: %v", err)
-		return "", "", errors.New("internal server error")
+		return "", "", errors.New("user not found")
 	}
 
 	// Generate new tokens

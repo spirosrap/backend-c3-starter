@@ -360,6 +360,57 @@ curl -X GET http://localhost:8080/api/v1/users/profile \
   -H "Authorization: Bearer <access_token>"
 ```
 
+6. Test Role-Based Access Control:
+```bash
+# Try accessing admin-only route with regular user token
+curl -X GET http://localhost:8080/api/v1/admin/dashboard \
+  -H "Authorization: Bearer <access_token>"
+
+# Expected response for non-admin users:
+# {"error":"insufficient permissions"}
+```
+
+### Role-Based Access Control Testing
+
+The system implements role-based access control through middleware that checks user roles and permissions:
+
+1. **Admin Route Protection**
+   - Routes under `/api/v1/admin/*` are protected by both authentication and admin role requirement
+   - Example admin route: `/api/v1/admin/dashboard`
+   - Only users with the "admin" role can access these routes
+   - Regular users receive a 403 Forbidden response with "insufficient permissions" message
+
+2. **Role Verification**
+   - The JWT token includes the user's roles and permissions
+   - Middleware checks these roles against route requirements
+   - Example JWT payload for a regular user:
+     ```json
+     {
+       "user_id": "uuid",
+       "username": "testuser",
+       "roles": ["user"],
+       "permissions": [
+         "tasks:create",
+         "tasks:read",
+         "tasks:update",
+         "tasks:delete",
+         "users:read"
+       ]
+     }
+     ```
+
+3. **Permission-Based Access**
+   - Each role has specific permissions
+   - Permissions are checked for protected operations
+   - Example: Only users with "tasks:create" permission can create tasks
+
+4. **Testing Different Access Levels**
+   - Regular users can access basic endpoints
+   - Admin-only routes are protected
+   - Permission-specific operations are restricted
+   - Invalid or expired tokens are rejected
+   - Missing tokens result in 401 Unauthorized
+
 ## Security Features
 
 1. **Password Security**

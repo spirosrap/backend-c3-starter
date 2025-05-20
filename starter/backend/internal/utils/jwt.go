@@ -5,8 +5,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/gofrs/uuid"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 var (
@@ -15,8 +15,10 @@ var (
 )
 
 type Claims struct {
-	UserID   uuid.UUID `json:"user_id"`
-	Username string    `json:"username"`
+	UserID      uuid.UUID `json:"user_id"`
+	Username    string    `json:"username"`
+	Roles       []string  `json:"roles"`
+	Permissions []string  `json:"permissions"`
 	jwt.RegisteredClaims
 }
 
@@ -28,10 +30,12 @@ func getJWTSecret() []byte {
 	return []byte(secret)
 }
 
-func GenerateAccessToken(userID uuid.UUID, username string) (string, error) {
+func GenerateAccessToken(userID uuid.UUID, username string, roles []string, permissions []string) (string, error) {
 	claims := &Claims{
-		UserID:   userID,
-		Username: username,
+		UserID:      userID,
+		Username:    username,
+		Roles:       roles,
+		Permissions: permissions,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -59,4 +63,4 @@ func ValidateAccessToken(tokenString string) (*Claims, error) {
 	}
 
 	return nil, ErrInvalidToken
-} 
+}
