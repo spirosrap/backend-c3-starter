@@ -5,12 +5,13 @@ This document details the implementation of the Taskify project, focusing on the
 ## Table of Contents
 1. [Prerequisites](#prerequisites)
 2. [Database Setup](#database-setup)
-3. [Environment Configuration](#environment-configuration)
-4. [Running the Application](#running-the-application)
-5. [API Endpoints](#api-endpoints)
-6. [Testing the Implementation](#testing-the-implementation)
-7. [Security Features](#security-features)
-8. [Troubleshooting](#troubleshooting)
+3. [Tasks Table Migration](#tasks-table-migration)
+4. [Environment Configuration](#environment-configuration)
+5. [Running the Application](#running-the-application)
+6. [API Endpoints](#api-endpoints)
+7. [Testing the Implementation](#testing-the-implementation)
+8. [Security Features](#security-features)
+9. [Troubleshooting](#troubleshooting)
 
 ## Prerequisites
 
@@ -40,6 +41,72 @@ CREATE DATABASE taskmanager;
 CREATE USER taskmanager WITH PASSWORD 'strongpass123';
 GRANT ALL PRIVILEGES ON DATABASE taskmanager TO taskmanager;
 ```
+
+## Tasks Table Migration
+
+### Creating the Migration
+
+To add support for tasks, create a new migration in `database-migrations/migrations`:
+- `000003_create_tasks_table.up.sql` (creates the table and indexes)
+- `000003_create_tasks_table.down.sql` (drops the table)
+
+**Schema:**
+- `id` (UUID, primary key)
+- `title` (string, required)
+- `description` (text, optional)
+- `status` (string, default 'pending')
+- `priority` (string, default 'medium')
+- `due_date` (timestamp, optional)
+- `user_id` (UUID, required, foreign key to users)
+- `created_at`, `updated_at`, `deleted_at` (timestamps)
+- Indexes on `user_id`, `status`, `priority`, `due_date`
+
+**Example up migration:**
+```sql
+CREATE TABLE IF NOT EXISTS tasks (
+    id UUID PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    status VARCHAR(50) NOT NULL DEFAULT 'pending',
+    priority VARCHAR(50) NOT NULL DEFAULT 'medium',
+    due_date TIMESTAMP,
+    user_id UUID NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX idx_tasks_user_id ON tasks(user_id);
+CREATE INDEX idx_tasks_status ON tasks(status);
+CREATE INDEX idx_tasks_priority ON tasks(priority);
+CREATE INDEX idx_tasks_due_date ON tasks(due_date);
+```
+
+**Example down migration:**
+```sql
+DROP TABLE IF EXISTS tasks;
+```
+
+### Running the Migration
+
+1. Ensure your database is running and environment variables are set.
+2. From the `database-migrations` directory, run:
+   ```bash
+   go run main.go up
+   ```
+3. If you encounter a dirty migration state, manually update the `schema_migrations` table:
+   ```sql
+   UPDATE schema_migrations SET version = <latest_version>, dirty = false;
+   ```
+   Then re-run the migration.
+
+### Verifying the Migration
+
+Check that the `tasks` table exists:
+```bash
+psql -h localhost -p 5432 -U taskmanager -d taskmanager -c "\dt"
+```
+You should see `tasks` in the list of tables.
 
 ## Environment Configuration
 
