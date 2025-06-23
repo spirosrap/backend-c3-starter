@@ -82,15 +82,47 @@ func (h *TaskHandler) GetTaskByID(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid task ID"})
 		return
 	}
+
+	// Get user info from context
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not authenticated"})
+		return
+	}
+
+	userUUID := userID.(uuid.UUID)
+
+	// Check if user is admin
+	userRoles, exists := c.Get("roles")
+	isAdmin := false
+	if exists {
+		rolesList := userRoles.([]string)
+		for _, role := range rolesList {
+			if role == "admin" {
+				isAdmin = true
+				break
+			}
+		}
+	}
+
 	task, err := h.taskService.GetTaskByID(h.db, taskID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "task not found"})
 		return
 	}
+
+	// Enforce ownership: only task owner or admin can access
+	if !isAdmin && task.UserID != userUUID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "access denied - you can only access your own tasks"})
+		return
+	}
+
 	c.JSON(http.StatusOK, task)
 }
 
 func (h *TaskHandler) GetTasks(c *gin.Context) {
+	// This endpoint is already protected by RequireRoleAndPermission("admin", "tasks", "read")
+	// So only admins can access all tasks
 	tasks, err := h.taskService.GetTasks(h.db)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -106,11 +138,53 @@ func (h *TaskHandler) UpdateTask(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid task ID"})
 		return
 	}
+
+	// Get user info from context
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not authenticated"})
+		return
+	}
+
+	userUUID := userID.(uuid.UUID)
+
+	// Check if user is admin
+	userRoles, exists := c.Get("roles")
+	isAdmin := false
+	if exists {
+		rolesList := userRoles.([]string)
+		for _, role := range rolesList {
+			if role == "admin" {
+				isAdmin = true
+				break
+			}
+		}
+	}
+
+	// Get the existing task to check ownership
+	existingTask, err := h.taskService.GetTaskByID(h.db, taskID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "task not found"})
+		return
+	}
+
+	// Enforce ownership: only task owner or admin can update
+	if !isAdmin && existingTask.UserID != userUUID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "access denied - you can only update your own tasks"})
+		return
+	}
+
 	var task models.Task
 	if err := c.ShouldBindJSON(&task); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+
+	// Ensure the task belongs to the same user (unless admin)
+	if !isAdmin {
+		task.UserID = userUUID
+	}
+
 	if err := h.taskService.UpdateTask(h.db, taskID, &task); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -125,6 +199,42 @@ func (h *TaskHandler) DeleteTask(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid task ID"})
 		return
 	}
+
+	// Get user info from context
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not authenticated"})
+		return
+	}
+
+	userUUID := userID.(uuid.UUID)
+
+	// Check if user is admin
+	userRoles, exists := c.Get("roles")
+	isAdmin := false
+	if exists {
+		rolesList := userRoles.([]string)
+		for _, role := range rolesList {
+			if role == "admin" {
+				isAdmin = true
+				break
+			}
+		}
+	}
+
+	// Get the existing task to check ownership
+	existingTask, err := h.taskService.GetTaskByID(h.db, taskID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "task not found"})
+		return
+	}
+
+	// Enforce ownership: only task owner or admin can delete
+	if !isAdmin && existingTask.UserID != userUUID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "access denied - you can only delete your own tasks"})
+		return
+	}
+
 	if err := h.taskService.DeleteTask(h.db, taskID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -139,6 +249,35 @@ func (h *TaskHandler) GetTasksByUser(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user ID"})
 		return
 	}
+
+	// Get current user info from context
+	currentUserID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not authenticated"})
+		return
+	}
+
+	currentUserUUID := currentUserID.(uuid.UUID)
+
+	// Check if current user is admin
+	userRoles, exists := c.Get("roles")
+	isAdmin := false
+	if exists {
+		rolesList := userRoles.([]string)
+		for _, role := range rolesList {
+			if role == "admin" {
+				isAdmin = true
+				break
+			}
+		}
+	}
+
+	// Enforce access control: users can only access their own tasks, admins can access any user's tasks
+	if !isAdmin && currentUserUUID != userUUID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "access denied - you can only access your own tasks"})
+		return
+	}
+
 	var tasks []models.Task
 	if err := h.db.Where("user_id = ?", userUUID).Find(&tasks).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

@@ -37,7 +37,8 @@ func main() {
 
 	refreshHandler := handlers.NewRefreshHandler(db, authService)
 
-	userHandler := handlers.NewUserHandler(db, nil)
+	userService := services.NewUserService()
+	userHandler := handlers.NewUserHandler(db, userService)
 
 	r := gin.Default()
 
@@ -57,25 +58,48 @@ func main() {
 			authRoutes.POST("/login", authHandler.Token)
 			authRoutes.POST("/refresh", refreshHandler.Refresh)
 		}
+
+		// Task routes with ABAC policies
 		taskRoutes := v1.Group("/tasks")
 		taskRoutes.Use(middleware.AuthMiddleware())
 		{
-			taskRoutes.POST("", taskHandler.CreateTask)
-			taskRoutes.PUT("/:id", taskHandler.UpdateTask)
-			taskRoutes.DELETE("/:id", taskHandler.DeleteTask)
-			taskRoutes.GET("/:id", taskHandler.GetTaskByID)
-			taskRoutes.GET("", taskHandler.GetTasks)
-		}
-		userRoutes := v1.Group("/users")
-		{
-			userRoutes.DELETE("/:user_id", userHandler.DeleteUser)
-			userRoutes.GET("", userHandler.GetUsers)
-			userRoutes.GET("/:user_id/tasks", taskHandler.GetTasksByUser)
-			userRoutes.GET("/profile", userHandler.GetUserProfile)
-			userRoutes.GET("/profile/:user_id", userHandler.GetUserProfileByUserId)
+			// Create task - any authenticated user with task:create permission
+			taskRoutes.POST("", middleware.RequirePermission("tasks", "create"), taskHandler.CreateTask)
+
+			// Update task - user must own the task or be admin with task:update permission
+			taskRoutes.PUT("/:id", middleware.RequirePermission("tasks", "update"), taskHandler.UpdateTask)
+
+			// Delete task - user must own the task or be admin with task:delete permission
+			taskRoutes.DELETE("/:id", middleware.RequirePermission("tasks", "delete"), taskHandler.DeleteTask)
+
+			// Get specific task - user must own the task or be admin with task:read permission
+			taskRoutes.GET("/:id", middleware.RequirePermission("tasks", "read"), taskHandler.GetTaskByID)
+
+			// Get all tasks - admin only with task:read permission
+			taskRoutes.GET("", middleware.RequireRoleAndPermission("admin", "tasks", "read"), taskHandler.GetTasks)
 		}
 
-		// Admin-only route
+		// User routes with ABAC policies
+		userRoutes := v1.Group("/users")
+		userRoutes.Use(middleware.AuthMiddleware())
+		{
+			// Delete user - admin only with user:delete permission
+			userRoutes.DELETE("/:user_id", middleware.RequireRoleAndPermission("admin", "users", "delete"), userHandler.DeleteUser)
+
+			// Get all users - admin only with user:read permission
+			userRoutes.GET("", middleware.RequireRoleAndPermission("admin", "users", "read"), userHandler.GetUsers)
+
+			// Get tasks by user - admin can access any user's tasks, regular users can only access their own
+			userRoutes.GET("/:user_id/tasks", middleware.RequirePermission("tasks", "read"), taskHandler.GetTasksByUser)
+
+			// Get own profile - any authenticated user
+			userRoutes.GET("/profile", userHandler.GetUserProfile)
+
+			// Get user profile by ID - admin only with user:read permission
+			userRoutes.GET("/profile/:user_id", middleware.RequireRoleAndPermission("admin", "users", "read"), userHandler.GetUserProfileByUserId)
+		}
+
+		// Admin-only routes
 		adminRoutes := v1.Group("/admin")
 		adminRoutes.Use(middleware.AuthMiddleware(), middleware.RequireRole("admin"))
 		{
